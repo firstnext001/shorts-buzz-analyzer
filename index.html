@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>バズ解剖</title>
+    <meta name="description" content="YouTubeショートのURLから、再生回数・高評価数などをもとにバズった理由を分析します。" />
+    <meta name="theme-color" content="#F2F3F6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0F1116" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="バズ解剖" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="./icon-192.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <header class="top">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <h1>バズ解剖</h1>
+        </div>
+        <button type="button" class="icon-btn" id="open-settings" aria-label="設定">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Zm7.4-3.2c0-.5 0-1-.1-1.4l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-2.4-1.4L14 2.6h-4l-.5 2.6c-.9.3-1.7.8-2.4 1.4l-2.4-1-2 3.4 2 1.6a7.9 7.9 0 0 0 0 2.8l-2 1.6 2 3.4 2.4-1c.7.6 1.5 1.1 2.4 1.4l.5 2.6h4l.5-2.6c.9-.3 1.7-.8 2.4-1.4l2.4 1 2-3.4-2-1.6c.1-.4.1-.9.1-1.4Z"
+            />
+          </svg>
+        </button>
+      </header>
+
+      <form class="entry" id="entry" novalidate>
+        <label for="url-input" class="entry-label">ショート動画のURL</label>
+        <div class="entry-row">
+          <input
+            id="url-input"
+            name="url"
+            type="url"
+            inputmode="url"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            placeholder="https://youtube.com/shorts/…"
+          />
+          <button type="button" class="btn-ghost" id="paste-btn">貼り付け</button>
+        </div>
+        <button type="submit" class="btn-primary" id="analyze-btn">分析する</button>
+        <p class="entry-error" id="entry-error" role="alert" hidden></p>
+      </form>
+
+      <section id="setup" class="setup" hidden>
+        <h2>最初にAPIキーを設定してください</h2>
+        <p>
+          動画の数値を取得する<strong>YouTube APIキー</strong>が必要です。バズの理由を文章で解説するAI分析を使う場合は<strong>Anthropic APIキー</strong>も設定します。
+        </p>
+        <button type="button" class="btn-primary" id="setup-open">設定を開く</button>
+      </section>
+
+      <main id="result" aria-live="polite"></main>
+
+      <section id="history" class="history" hidden>
+        <h2 class="section-title">これまでの分析</h2>
+        <ul id="history-list"></ul>
+      </section>
+    </div>
+
+    <dialog id="settings" class="sheet">
+      <form method="dialog" id="settings-form" class="sheet-body">
+        <div class="sheet-head">
+          <h2>設定</h2>
+          <button type="button" class="btn-text" id="settings-close">閉じる</button>
+        </div>
+
+        <div class="field">
+          <label for="yt-key">YouTube Data API キー <span class="req">必須</span></label>
+          <div class="key-row">
+            <input id="yt-key" class="masked" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza…" />
+            <button type="button" class="btn-text reveal" data-target="yt-key">表示</button>
+          </div>
+          <details class="howto">
+            <summary>キーの取り方</summary>
+            <ol>
+              <li>Google Cloud Console（console.cloud.google.com）でプロジェクトを作成</li>
+              <li>「APIとサービス」→「ライブラリ」で <b>YouTube Data API v3</b> を有効化</li>
+              <li>「認証情報」→「認証情報を作成」→「APIキー」</li>
+              <li>キーの制限で「YouTube Data API v3」のみに限定し、ウェブサイト制限にこのアプリのURLを登録すると安全です</li>
+            </ol>
+            <p>無料枠は1日10,000ユニット。1回の分析で約5ユニット使います。</p>
+          </details>
+        </div>
+
+        <div class="field">
+          <label for="ai-key">Anthropic API キー <span class="opt">AI分析用</span></label>
+          <div class="key-row">
+            <input id="ai-key" class="masked" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" />
+            <button type="button" class="btn-text reveal" data-target="ai-key">表示</button>
+          </div>
+          <details class="howto">
+            <summary>キーの取り方</summary>
+            <ol>
+              <li>console.anthropic.com にログイン</li>
+              <li>「Billing」でクレジットを購入（前払い制）</li>
+              <li>「API Keys」→「Create Key」で作成</li>
+            </ol>
+            <p>AI分析は1回あたり約10〜20円です。コンソールで月の利用上限を設定しておくと安心です。</p>
+          </details>
+        </div>
+
+        <label class="switch">
+          <input type="checkbox" id="use-ai" />
+          <span class="switch-track" aria-hidden="true"></span>
+          <span>AIでバズの理由を分析する</span>
+        </label>
+
+        <p class="privacy">キーはこのiPhoneの中にだけ保存され、YouTube（Google）とAnthropic以外には送信されません。</p>
+
+        <button type="submit" class="btn-primary" id="settings-save">保存</button>
+      </form>
+    </dialog>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

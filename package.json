@@ -1,0 +1,19 @@
+{
+  "name": "shorts-buzz-analyzer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "YouTubeショートのURLから、高評価数・再生回数などをもとにバズの理由を分析するiPhone向けWebアプリ",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}
