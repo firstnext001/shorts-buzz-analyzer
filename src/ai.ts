@@ -117,25 +117,44 @@ export async function analyzeWithClaude(
   a: Analysis,
   onProgress: (chars: number) => void,
 ): Promise<AiResult> {
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   const prompt = buildPrompt(d, a);
+  return callClaudeJson<AiResult>({
+    apiKey,
+    schema: SCHEMA,
+    onProgress,
+    refusalMessage: "この動画の内容はAIが分析を控えました。数値分析の結果をご覧ください。",
+    build: (withRemoteImages) => [
+      ...(withRemoteImages && d.video.thumbnailUrl
+        ? [{ type: "image" as const, source: { type: "url" as const, url: d.video.thumbnailUrl } }]
+        : []),
+      { type: "text", text: prompt },
+    ],
+  });
+}
 
-  const run = async (withImage: boolean) => {
-    const content: Anthropic.Beta.BetaContentBlockParam[] = [];
-    if (withImage && d.video.thumbnailUrl) {
-      content.push({ type: "image", source: { type: "url", url: d.video.thumbnailUrl } });
-    }
-    content.push({ type: "text", text: prompt });
+/**
+ * Claude に JSON（構造化出力）で答えさせる共通処理。
+ * build(true) の中のURL画像（YouTubeのサムネイル）が取得できずに断られた場合は、build(false) でやり直す。
+ */
+export async function callClaudeJson<T>(opts: {
+  apiKey: string;
+  schema: Record<string, unknown>;
+  build: (withRemoteImages: boolean) => Anthropic.Beta.BetaContentBlockParam[];
+  onProgress: (chars: number) => void;
+  refusalMessage: string;
+}): Promise<T> {
+  const client = new Anthropic({ apiKey: opts.apiKey, dangerouslyAllowBrowser: true });
 
+  const run = async (withRemoteImages: boolean) => {
     const stream = client.beta.messages.stream({
       model: MODEL,
       max_tokens: 16000,
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
-      output_config: { format: { type: "json_schema", schema: SCHEMA } },
-      messages: [{ role: "user", content }],
+      output_config: { format: { type: "json_schema", schema: opts.schema } },
+      messages: [{ role: "user", content: opts.build(withRemoteImages) }],
     });
-    stream.on("text", (_delta, snapshot) => onProgress(snapshot.length));
+    stream.on("text", (_delta, snapshot) => opts.onProgress(snapshot.length));
     return stream.finalMessage();
   };
 
@@ -144,7 +163,6 @@ export async function analyzeWithClaude(
     try {
       message = await run(true);
     } catch (e) {
-      // サムネイル画像が取得できない場合などは画像なしでやり直す
       if (e instanceof Anthropic.BadRequestError) message = await run(false);
       else throw e;
     }
@@ -152,15 +170,13 @@ export async function analyzeWithClaude(
     throw new AiError(explainError(e));
   }
 
-  if (message.stop_reason === "refusal") {
-    throw new AiError("この動画の内容はAIが分析を控えました。数値分析の結果をご覧ください。");
-  }
+  if (message.stop_reason === "refusal") throw new AiError(opts.refusalMessage);
   if (message.stop_reason === "max_tokens") {
     throw new AiError("AIの回答が長くなりすぎて途中で終わりました。もう一度お試しください。");
   }
   const text = message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
   try {
-    return JSON.parse(text) as AiResult;
+    return JSON.parse(text) as T;
   } catch {
     throw new AiError("AIの回答を読み取れませんでした。もう一度お試しください。");
   }
@@ -175,5 +191,5 @@ function explainError(e: unknown): string {
   }
   if (e instanceof Anthropic.APIConnectionError) return "Claude APIに接続できませんでした。通信状態を確認してください。";
   if (e instanceof Anthropic.APIError) return `Claude APIエラー (${e.status ?? "?"})。時間をおいて再度お試しください。`;
-  return "AI分析中に予期しないエラーが発生しました。";
+  return "AIの処理中に予期しないエラーが発生しました。";
 }

@@ -43,6 +43,12 @@
         </button>
       </header>
 
+      <nav class="tabs" role="tablist" aria-label="機能の切り替え">
+        <button type="button" role="tab" class="tab" id="tab-btn-analyze" aria-controls="tab-analyze" aria-selected="true">バズ分析</button>
+        <button type="button" role="tab" class="tab" id="tab-btn-plan" aria-controls="tab-plan" aria-selected="false">動画に提案</button>
+      </nav>
+
+      <div class="panel" id="tab-analyze" role="tabpanel" aria-labelledby="tab-btn-analyze">
       <form class="entry" id="entry" novalidate>
         <label for="url-input" class="entry-label">ショート動画のURL</label>
         <div class="entry-row">
@@ -76,6 +82,67 @@
         <h2 class="section-title">これまでの分析</h2>
         <ul id="history-list"></ul>
       </section>
+      </div>
+
+      <div class="panel" id="tab-plan" role="tabpanel" aria-labelledby="tab-btn-plan" hidden>
+        <p class="plan-lead">
+          バズ分析した動画をお手本に、これから投稿する動画のタイトル・テロップ・概要欄をAIが考えます。
+        </p>
+
+        <section id="plan-setup" class="setup" hidden>
+          <h2>Anthropic APIキーが必要です</h2>
+          <p>提案はAI（Claude）が作るため、設定で<strong>Anthropic APIキー</strong>を登録してください。</p>
+          <button type="button" class="btn-primary" id="plan-setup-open">設定を開く</button>
+        </section>
+
+        <section class="step">
+          <div class="step-head">
+            <h2 class="step-title"><span class="step-no">1</span>お手本にするバズ動画</h2>
+            <span class="step-count" id="ref-count"></span>
+          </div>
+          <p class="hint">「バズ分析」で分析した動画から最大5本。AI分析ありの動画ほど参考になります。</p>
+          <p class="hint" id="ref-empty" hidden>まだ分析した動画がありません。先に「バズ分析」でお手本にしたいショートを分析してください（なしでも提案できます）。</p>
+          <ul class="ref-list" id="ref-list"></ul>
+        </section>
+
+        <section class="step">
+          <h2 class="step-title"><span class="step-no">2</span>あなたの動画</h2>
+          <label class="file-btn" for="video-input">動画を選ぶ</label>
+          <input type="file" id="video-input" accept="video/*" class="visually-hidden" />
+          <div class="video-info" id="video-info"></div>
+          <p class="hint">動画は端末の中で場面を切り出すだけで、動画ファイルそのものは送信しません。</p>
+        </section>
+
+        <section class="step">
+          <h2 class="step-title"><span class="step-no">3</span>話している内容</h2>
+          <div class="seg" role="radiogroup" aria-label="話している内容の伝え方">
+            <label class="seg-opt"><input type="radio" name="speech" value="script" id="speech-script" checked /><span>台本を貼り付け</span></label>
+            <label class="seg-opt"><input type="radio" name="speech" value="auto" id="speech-auto" /><span>自動で文字起こし</span></label>
+          </div>
+          <div id="script-box">
+            <label for="script-input" class="visually-hidden">台本・話す内容</label>
+            <textarea id="script-input" rows="5" placeholder="話している内容・セリフを貼り付け（話し声がない動画は空欄でOK）"></textarea>
+          </div>
+          <div class="auto-note" id="auto-note" hidden></div>
+        </section>
+
+        <section class="step">
+          <h2 class="step-title"><span class="step-no">4</span>動画の狙い・オチ <span class="opt">任意</span></h2>
+          <label for="notes-input" class="visually-hidden">動画の狙い・オチ</label>
+          <textarea id="notes-input" rows="3" placeholder="例：上司の無茶振りあるある。最後に部下が倍返しするのがオチ"></textarea>
+        </section>
+
+        <button type="button" class="btn-primary" id="plan-btn">提案を作る</button>
+        <p class="entry-error" id="plan-error" role="alert" hidden></p>
+        <p class="hint cost-note">1回あたり約20〜50円（Claude）。自動文字起こしを使う場合は1分あたり約1円（OpenAI）が加わります。</p>
+
+        <div id="plan-result" aria-live="polite"></div>
+
+        <section id="plan-history" class="history" hidden>
+          <h2 class="section-title">これまでの提案</h2>
+          <ul id="plan-history-list"></ul>
+        </section>
+      </div>
     </div>
 
     <dialog id="settings" class="sheet">
@@ -112,12 +179,35 @@
           <details class="howto">
             <summary>キーの取り方</summary>
             <ol>
-              <li>console.anthropic.com にログイン</li>
+              <li>platform.claude.com にログイン</li>
               <li>「Billing」でクレジットを購入（前払い制）</li>
               <li>「API Keys」→「Create Key」で作成</li>
             </ol>
             <p>AI分析は1回あたり約10〜20円です。コンソールで月の利用上限を設定しておくと安心です。</p>
           </details>
+        </div>
+
+        <div class="field">
+          <label for="oa-key">OpenAI API キー <span class="opt">自動文字起こし用</span></label>
+          <div class="key-row">
+            <input id="oa-key" class="masked" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-…" />
+            <button type="button" class="btn-text reveal" data-target="oa-key">表示</button>
+          </div>
+          <details class="howto">
+            <summary>キーの取り方</summary>
+            <ol>
+              <li>platform.openai.com にログイン</li>
+              <li>「Billing」でクレジットを購入（前払い制）</li>
+              <li>「API keys」→「Create new secret key」で作成</li>
+            </ol>
+            <p>「動画に提案」で「自動で文字起こし」を選んだときだけ使います。1分あたり約1円です。</p>
+          </details>
+        </div>
+
+        <div class="field">
+          <label for="channel-profile">あなたのチャンネル <span class="opt">提案用</span></label>
+          <textarea id="channel-profile" rows="3" placeholder="例：エンタメ・ネタ系。20代会社員向けの職場あるある。テンポの速いツッコミが持ち味"></textarea>
+          <p class="hint">ジャンル・視聴者・キャラを書いておくと、提案があなたのチャンネル向けになります。</p>
         </div>
 
         <label class="switch">
@@ -126,7 +216,7 @@
           <span>AIでバズの理由を分析する</span>
         </label>
 
-        <p class="privacy">キーはこのiPhoneの中にだけ保存され、YouTube（Google）とAnthropic以外には送信されません。</p>
+        <p class="privacy">キーはこのiPhoneの中にだけ保存され、それぞれのサービス（Google・Anthropic・OpenAI）以外には送信されません。</p>
 
         <button type="submit" class="btn-primary" id="settings-save">保存</button>
       </form>

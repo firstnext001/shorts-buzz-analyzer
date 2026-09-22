@@ -1,5 +1,7 @@
 import "./style.css";
 import { AiError, analyzeWithClaude, type AiResult } from "./ai";
+import { $, h, thumb, type Child } from "./dom";
+import { initPlanner, refreshPlanner } from "./planner";
 import { analyze, fmtCount, GRADE_LABEL, type Analysis } from "./metrics";
 import {
   addHistory,
@@ -10,36 +12,6 @@ import {
   type HistoryEntry,
 } from "./storage";
 import { fetchAll, parseVideoId, YouTubeError, type FetchedData } from "./youtube";
-
-// ---------- DOM helper（YouTube由来の文字列は必ず textContent で入れる） ----------
-
-type Child = Node | string | number | null | undefined | false;
-
-function h<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  attrs?: Record<string, string> | null,
-  ...children: Child[]
-): HTMLElementTagNameMap[K] {
-  const el = document.createElement(tag);
-  if (attrs) for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-  for (const c of children) {
-    if (c === null || c === undefined || c === false) continue;
-    el.append(c instanceof Node ? c : String(c));
-  }
-  return el;
-}
-
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-
-/** サムネイル。URLが無い・読み込めない場合は同じ大きさの無地の枠を出す */
-function thumb(url: string, cls?: string): HTMLElement {
-  const attrs: Record<string, string> = { alt: "", loading: "lazy", referrerpolicy: "no-referrer" };
-  if (cls) attrs.class = cls;
-  const img = h("img", attrs);
-  img.addEventListener("error", () => img.removeAttribute("src"));
-  if (url) img.src = url;
-  return img;
-}
 
 const form = $<HTMLFormElement>("entry");
 const urlInput = $<HTMLInputElement>("url-input");
@@ -54,6 +26,8 @@ const settingsForm = $<HTMLFormElement>("settings-form");
 const ytKeyInput = $<HTMLInputElement>("yt-key");
 const aiKeyInput = $<HTMLInputElement>("ai-key");
 const useAiInput = $<HTMLInputElement>("use-ai");
+const oaKeyInput = $<HTMLInputElement>("oa-key");
+const channelInput = $<HTMLTextAreaElement>("channel-profile");
 
 // ---------- state ----------
 
@@ -438,7 +412,9 @@ function openSettings() {
   ytKeyInput.value = s.youtubeKey;
   aiKeyInput.value = s.anthropicKey;
   useAiInput.checked = s.useAi;
-  for (const input of [ytKeyInput, aiKeyInput]) input.classList.add("masked");
+  oaKeyInput.value = s.openaiKey;
+  channelInput.value = s.channelProfile;
+  for (const input of [ytKeyInput, aiKeyInput, oaKeyInput]) input.classList.add("masked");
   for (const btn of document.querySelectorAll<HTMLButtonElement>(".reveal")) btn.textContent = "表示";
   if (!settingsDialog.open) settingsDialog.showModal();
 }
@@ -447,9 +423,12 @@ settingsForm.addEventListener("submit", () => {
   saveSettings({
     youtubeKey: ytKeyInput.value.trim(),
     anthropicKey: aiKeyInput.value.trim(),
+    openaiKey: oaKeyInput.value.trim(),
     useAi: useAiInput.checked,
+    channelProfile: channelInput.value.trim(),
   });
   refreshSetupNotice();
+  refreshPlanner();
   // キーを設定した直後なら、表示中の動画のAI分析を始める
   const s = loadSettings();
   if (current && s.useAi && s.anthropicKey && (current.ai.kind === "nokey" || current.ai.kind === "off")) {
@@ -495,16 +474,44 @@ $("paste-btn").addEventListener("click", async () => {
   }
 });
 
+// ---------- tabs ----------
+
+type Tab = "analyze" | "plan";
+const TAB_KEY = "sba.tab.v1";
+
+function showTab(tab: Tab) {
+  for (const t of ["analyze", "plan"] as const) {
+    $(`tab-${t}`).hidden = t !== tab;
+    $(`tab-btn-${t}`).setAttribute("aria-selected", String(t === tab));
+  }
+  if (tab === "plan") refreshPlanner();
+  try {
+    localStorage.setItem(TAB_KEY, tab);
+  } catch {
+    /* 保存できなくても切り替えは動く */
+  }
+}
+
+$("tab-btn-analyze").addEventListener("click", () => showTab("analyze"));
+$("tab-btn-plan").addEventListener("click", () => showTab("plan"));
+
 // ---------- boot ----------
 
 refreshSetupNotice();
 renderHistory();
+initPlanner(openSettings);
+try {
+  showTab(localStorage.getItem(TAB_KEY) === "plan" ? "plan" : "analyze");
+} catch {
+  showTab("analyze");
+}
 
 // ショートカット等から ?url=… 付きで開かれたら、そのまま分析する
 const params = new URLSearchParams(location.search);
 const shared = params.get("url") ?? params.get("text");
 if (shared) {
   history.replaceState(null, "", location.pathname);
+  showTab("analyze");
   urlInput.value = extractUrl(shared);
   if (loadSettings().youtubeKey) void run(urlInput.value);
 }
